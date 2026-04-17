@@ -1,0 +1,228 @@
+{
+  "type": "Settings",
+  "audio": {
+    "input": {
+      "encoding": "linear16",
+      "sample_rate": 16000
+    },
+    "output": {
+      "encoding": "linear16",
+      "sample_rate": 16000,
+      "container": "none"
+    }
+  },
+  "agent": {
+    "language": "en",
+    "listen": {
+      "provider": {
+        "type": "deepgram",
+        "model": "nova-3",
+        "keyterms": [
+          "appointment",
+          "note",
+          "new patient",
+          "returning",
+          "morning",
+          "afternoon",
+          "evening",
+          "lunch"
+        ]
+      }
+    },
+    "think": {
+      "provider": {
+        "type": "open_ai",
+        "model": "gpt-4o-mini",
+        "temperature": 0.2
+      },
+      "prompt": "You are a professional medical receptionist. Today's date is {TODAY}. Do not use markdown. Plain conversational sentences only. IMPORTANT: Never narrate your own actions. Never say things like 'I will convert that', 'Let me check', 'Now I will fetch', or 'Please hold on' — a hold message is already played automatically before any lookup. Just call the function silently and speak only to the patient. Follow these steps in order. Call exactly one function per step before moving on. STEP 1 MOBILE: Ask for the caller's mobile number. Read it back digit by digit to confirm. On confirmation call register_mobile. On mismatch call mobile_attempt_failed and ask again. After 3 failed attempts say a polite goodbye and end the call. STEP 2 INTENT: Ask whether they are calling to book an appointment or leave a note. Call set_intent with booking or note. BOOKING PATH. STEP 3: Ask if they are a new or returning patient. Call set_patient_type with new or returning. STEP 4 RETURNING: First collect their date of birth (you will need it to verify). Then call fetch_patient. If matched greet by name and go to Step 5. If mismatched ask once more. After 2 DOB mismatches treat as new and do Step 4 NEW. If fetch_patient returns an error or timeout, apologise briefly, then do Step 4 NEW — do not attempt fetch_patient again. STEP 4 NEW: Ask them to spell their full name letter by letter and read the letters back to confirm. If you already have their date of birth from the verification attempt, do not ask for it again — use it. Otherwise ask for it and convert to YYYY-MM-DD. Call register_new_patient with confirmed name and dob. STEP 5: Ask for their preferred appointment date and time. The appointment date is a future date they want to visit and is never their date of birth. Call check_availability with date in YYYY-MM-DD and time as HH:MM 24-hour or a window keyword (morning=9am-11am, lunch=11am-12pm, afternoon=12pm-3pm, evening=3pm-5pm). If the patient gives only a date with no time preference, call check_availability with date only and no time. NEVER answer availability questions from memory or a previous result — always call check_availability again for any new date or time the patient mentions. Present the available slots and ask the patient to choose one. STEP 6: Confirm name, date, and time with the patient. If the patient asks about a different date or time before confirming, call check_availability again — never guess. Call book_appointment only after explicit verbal confirmation. NOTE PATH: Ask them to spell their full name letter by letter and read letters back to confirm. Ask what the note should say and read it back. Call leave_note only after confirmation.",
+      "functions": [
+        {
+          "name": "register_mobile",
+          "description": "Call this as soon as you have successfully understood the patient's mobile number. Must be the very first function called on every conversation.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "mobile": {
+                "type": "string",
+                "description": "The patient's mobile number as spoken, digits only."
+              }
+            },
+            "required": [
+              "mobile"
+            ]
+          }
+        },
+        {
+          "name": "mobile_attempt_failed",
+          "description": "Call this each time you fail to understand the patient's mobile number. After 3 calls say a polite goodbye and end the call.",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        },
+        {
+          "name": "set_intent",
+          "description": "Call this once the patient has stated their intent. Use 'booking' for appointment booking, 'note' for leaving a message.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "intent": {
+                "type": "string",
+                "description": "Either 'booking' or 'note'."
+              }
+            },
+            "required": [
+              "intent"
+            ]
+          }
+        },
+        {
+          "name": "set_patient_type",
+          "description": "Call this once the patient has stated whether they are new or returning.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "patient_type": {
+                "type": "string",
+                "description": "Either 'new' or 'returning'."
+              }
+            },
+            "required": [
+              "patient_type"
+            ]
+          }
+        },
+        {
+          "name": "register_new_patient",
+          "description": "Call this after spelling out and confirming the new patient's name and collecting their date of birth.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Patient's full name as confirmed letter by letter."
+              },
+              "dob": {
+                "type": "string",
+                "description": "Patient's date of birth in YYYY-MM-DD format."
+              }
+            },
+            "required": [
+              "name",
+              "dob"
+            ]
+          }
+        },
+        {
+          "name": "fetch_patient",
+          "description": "Look up a patient in the database by their mobile number. Call this after capturing the mobile number for a returning patient.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "mobile_number": {
+                "type": "string",
+                "description": "The patient's mobile number, digits only."
+              }
+            },
+            "required": [
+              "mobile_number"
+            ]
+          }
+        },
+        {
+          "name": "check_availability",
+          "description": "Check appointment availability. MUST be called for every availability question — never answer from memory or a previous result. Call with date only when the patient asks about a whole day (e.g. 'any slot on Friday'). Call with time/window only when no date is given. Call with both when the patient specifies both. Never skip this call.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "date": {
+                "type": "string",
+                "description": "Date in YYYY-MM-DD format. Omit if the patient gave only a time or window."
+              },
+              "time": {
+                "type": "string",
+                "description": "Specific time in HH:MM 24-hour format, or a window keyword: morning, afternoon, evening, lunch. Omit if the patient gave only a date."
+              }
+            },
+            "required": []
+          }
+        },
+        {
+          "name": "book_appointment",
+          "description": "Write a confirmed appointment to the system. Only call this after the patient has explicitly confirmed all details.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "mobile": {
+                "type": "string",
+                "description": "Patient's mobile number."
+              },
+              "name": {
+                "type": "string",
+                "description": "Patient's full name."
+              },
+              "dob": {
+                "type": "string",
+                "description": "Patient's date of birth in YYYY-MM-DD format."
+              },
+              "date": {
+                "type": "string",
+                "description": "Appointment date in YYYY-MM-DD format."
+              },
+              "time": {
+                "type": "string",
+                "description": "Appointment time in HH:MM 24-hour format, or one of: morning, afternoon, evening, lunch."
+              },
+              "patient_type": {
+                "type": "string",
+                "description": "Either 'new' or 'returning'."
+              }
+            },
+            "required": [
+              "mobile",
+              "name",
+              "dob",
+              "date",
+              "time",
+              "patient_type"
+            ]
+          }
+        },
+        {
+          "name": "leave_note",
+          "description": "Save a free-text note for the patient. Only call this after the patient has confirmed the note content.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "mobile": {
+                "type": "string",
+                "description": "Patient's mobile number."
+              },
+              "name": {
+                "type": "string",
+                "description": "Patient's full name."
+              },
+              "note": {
+                "type": "string",
+                "description": "The free-text note content as confirmed by the patient."
+              }
+            },
+            "required": [
+              "mobile",
+              "name",
+              "note"
+            ]
+          }
+        }
+      ]
+    },
+    "speak": {
+      "provider": {
+        "type": "deepgram",
+        "model": "aura-2-thalia-en"
+      }
+    },
+    "greeting": "Hello, thank you for calling Endoscopy Place. To get started, could I please have your mobile number?"
+  }
+}
