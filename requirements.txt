@@ -1,0 +1,5 @@
+python-dotenv>=1.1.1
+websockets>=15.0.1
+requests>=2.32.0
+gspread>=6.0.0
+google-auth>=2.29.0

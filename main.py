@@ -2,6 +2,8 @@ import asyncio
 import json
 import websockets
 import os
+import urllib.request
+from http import HTTPStatus
 from datetime import datetime
 from dotenv import load_dotenv
 from enum import Enum
@@ -453,9 +455,34 @@ async def client_handler(client_ws):
         print(usage.summary(rubric))
 
 
+async def health_check(connection, request):
+    """HTTP health endpoint so Render and the keep-alive ping have something to hit."""
+    if request.path == "/health":
+        return connection.respond(HTTPStatus.OK, "OK\n")
+
+
+async def keep_alive():
+    """Ping /health every 14 minutes so Render's free tier doesn't spin down."""
+    base_url = os.getenv("RENDER_EXTERNAL_URL", "").rstrip("/")
+    if not base_url:
+        print("[KEEPALIVE] RENDER_EXTERNAL_URL not set — skipping keep-alive")
+        return
+    await asyncio.sleep(30)  # let the server finish starting up
+    while True:
+        await asyncio.sleep(14 * 60)
+        try:
+            urllib.request.urlopen(f"{base_url}/health", timeout=10)
+            print("[KEEPALIVE] Ping sent")
+        except Exception as e:
+            print(f"[KEEPALIVE] Ping failed: {e}")
+
+
 async def main():
-    await websockets.serve(client_handler, "localhost", 5000)
-    print("[SERVER] Started on ws://localhost:5000")
+    port = int(os.getenv("PORT", 5000))
+    await websockets.serve(client_handler, "0.0.0.0", port,
+                           process_request=health_check)
+    print(f"[SERVER] Started on ws://0.0.0.0:{port}")
+    asyncio.ensure_future(keep_alive())
     await asyncio.Future()
 
 

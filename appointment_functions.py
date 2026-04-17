@@ -26,8 +26,14 @@ _WINDOW_BOUNDS = {
 
 
 def _get_worksheet(tab_name: str):
-    creds_path = os.getenv("GOOGLE_CREDENTIALS_PATH", "credentials.json")
-    creds = Credentials.from_service_account_file(creds_path, scopes=SCOPES)
+    creds_json = os.getenv("GOOGLE_CREDENTIALS_JSON")
+    if creds_json:
+        import json as _json
+        info = _json.loads(creds_json)
+        creds = Credentials.from_service_account_info(info, scopes=SCOPES)
+    else:
+        creds_path = os.getenv("GOOGLE_CREDENTIALS_PATH", "future-life-485520-h2-59cf0045c9a2.json")
+        creds = Credentials.from_service_account_file(creds_path, scopes=SCOPES)
     client = gspread.authorize(creds)
     sheet_id = os.getenv("GOOGLE_SHEET_ID", "").strip().rstrip("/")
     return client.open_by_key(sheet_id).worksheet(tab_name)
