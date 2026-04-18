@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import websockets
 import os
 import urllib.request
@@ -8,6 +9,14 @@ from datetime import datetime
 from dotenv import load_dotenv
 from enum import Enum
 from appointment_functions import FUNCTION_MAP
+
+# Suppress the harmless EOFError spam from Render's TCP health probes
+# (load balancer opens a connection and closes it before sending any HTTP)
+class _SuppressTCPProbe(logging.Filter):
+    def filter(self, record):
+        return "connection closed while reading" not in record.getMessage()
+
+logging.getLogger("websockets.server").addFilter(_SuppressTCPProbe())
 
 load_dotenv()
 
@@ -456,9 +465,22 @@ async def client_handler(client_ws):
 
 
 async def health_check(connection, request):
-    """HTTP health endpoint so Render and the keep-alive ping have something to hit."""
+    """HTTP health endpoint — returns JSON status of all required config."""
     if request.path == "/health":
-        return connection.respond(HTTPStatus.OK, "OK\n")
+        checks = {
+            "deepgram_api_key":        bool(os.getenv("DEEPGRAM_API_KEY")),
+            "openai_api_key":          bool(os.getenv("OPENAI_API_KEY")),
+            "google_sheet_id":         bool(os.getenv("GOOGLE_SHEET_ID")),
+            "google_credentials":      bool(os.getenv("GOOGLE_CREDENTIALS_JSON")),
+            "appointment_api_url":     bool(os.getenv("APPOINTMENT_API_URL")),
+        }
+        all_ok = all(checks.values())
+        body = json.dumps({
+            "status": "ok" if all_ok else "degraded",
+            "checks": checks,
+        }, indent=2) + "\n"
+        status = HTTPStatus.OK if all_ok else HTTPStatus.SERVICE_UNAVAILABLE
+        return connection.respond(status, body)
 
 
 async def keep_alive():
