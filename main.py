@@ -503,7 +503,44 @@ async def keep_alive():
             print(f"[KEEPALIVE] Ping failed: {e}")
 
 
+def validate_startup():
+    """Check all required config at startup so failures surface immediately in logs."""
+    errors = []
+
+    required_env = [
+        "DEEPGRAM_API_KEY",
+        "OPENAI_API_KEY",
+        "GOOGLE_SHEET_ID",
+    ]
+    for key in required_env:
+        if not os.getenv(key):
+            errors.append(f"  missing env var: {key}")
+
+    # Validate Google credentials JSON is parseable
+    creds_json = os.getenv("GOOGLE_CREDENTIALS_JSON")
+    if creds_json:
+        try:
+            import json as _json
+            info = _json.loads(creds_json)
+            required_fields = ["type", "project_id", "private_key", "client_email"]
+            for field in required_fields:
+                if field not in info:
+                    errors.append(f"  GOOGLE_CREDENTIALS_JSON missing field: {field}")
+        except Exception as e:
+            errors.append(f"  GOOGLE_CREDENTIALS_JSON is not valid JSON: {e}")
+    else:
+        errors.append("  missing env var: GOOGLE_CREDENTIALS_JSON")
+
+    if errors:
+        print("[STARTUP] Configuration errors:")
+        for e in errors:
+            print(e)
+    else:
+        print("[STARTUP] All config OK")
+
+
 async def main():
+    validate_startup()
     port = int(os.getenv("PORT", 5000))
     await websockets.serve(client_handler, "0.0.0.0", port,
                            process_request=health_check)
