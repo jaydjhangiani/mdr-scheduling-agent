@@ -10,13 +10,17 @@ from dotenv import load_dotenv
 from enum import Enum
 from appointment_functions import FUNCTION_MAP
 
-# Suppress the harmless EOFError spam from Render's TCP health probes
-# (load balancer opens a connection and closes it before sending any HTTP)
-class _SuppressTCPProbe(logging.Filter):
+# Suppress harmless noise from Render's load balancer probes:
+# - TCP probes that close before sending any HTTP
+# - HEAD requests (Render health checks) which websockets rejects before process_request fires
+class _SuppressProbeNoise(logging.Filter):
+    _NOISE = ("connection closed while reading", "unsupported HTTP method")
     def filter(self, record):
-        return "connection closed while reading" not in record.getMessage()
+        msg = record.getMessage()
+        return not any(s in msg for s in self._NOISE)
 
-logging.getLogger("websockets.server").addFilter(_SuppressTCPProbe())
+for _logger in ("websockets.server", "websockets.asyncio.server"):
+    logging.getLogger(_logger).addFilter(_SuppressProbeNoise())
 
 load_dotenv()
 

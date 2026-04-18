@@ -5,7 +5,9 @@ import gspread
 from google.oauth2.service_account import Credentials
 
 PATIENT_API = "https://mdrvoiceai.webmdr.net/api/patients"
-APPOINTMENT_API = os.getenv("APPOINTMENT_API_URL", "http://localhost:3000/api/appointments")
+APPOINTMENT_API = os.getenv("APPOINTMENT_API_URL")
+
+
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
@@ -26,16 +28,20 @@ _WINDOW_BOUNDS = {
 
 
 def _get_worksheet(tab_name: str):
+    import json as _json
     creds_json = os.getenv("GOOGLE_CREDENTIALS_JSON")
     if creds_json:
-        import json as _json
-        info = _json.loads(creds_json)
+        try:
+            info = _json.loads(creds_json)
+        except _json.JSONDecodeError as e:
+            raise ValueError(f"GOOGLE_CREDENTIALS_JSON is not valid JSON: {e}") from e
         creds = Credentials.from_service_account_info(info, scopes=SCOPES)
     else:
         creds_path = os.getenv("GOOGLE_CREDENTIALS_PATH", "future-life-485520-h2-59cf0045c9a2.json")
         creds = Credentials.from_service_account_file(creds_path, scopes=SCOPES)
     client = gspread.authorize(creds)
     sheet_id = os.getenv("GOOGLE_SHEET_ID", "").strip().rstrip("/")
+    print(f"[SHEETS] Opening sheet_id={sheet_id!r} tab={tab_name!r}")
     return client.open_by_key(sheet_id).worksheet(tab_name)
 
 
